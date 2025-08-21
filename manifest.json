@@ -1,0 +1,18 @@
+{
+  "manifest_version": 2,
+  "name": "ChatGPT Folders",
+  "version": "1.1",
+  "description": "Organize ChatGPT conversations into folders inside the sidebar.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "32": "icons/icon-32.png"
+  }
+}
