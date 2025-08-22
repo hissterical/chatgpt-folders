@@ -1,19 +1,18 @@
 (function () {
   const HIDE_CLASS = "cgpf-hidden";
   const ACTIVE_FOLDER_CLASS = "cgpf-active-folder";
-  let chatIndex = new Map(); // ========== HELPERS ==========
+  let chatIndex = new Map();
 
+  // ========== HELPERS ==========
   function getIdFromHref(href) {
     const m = href && href.match(/\/c\/([a-z0-9-]+)/i);
     return m ? m[1] : null;
   }
 
   function getSidebarContainer() {
-    return (
-      document.querySelector('[data-testid="conversation-list"]') ||
-      document.querySelector("nav") ||
-      document.querySelector("aside")
-    );
+    return document.querySelector('[data-testid="conversation-list"]')
+      || document.querySelector("nav")
+      || document.querySelector("aside");
   }
 
   function indexSidebar() {
@@ -26,15 +25,17 @@
       if (!id) return;
       const row = a.closest("li") || a;
       chatIndex.set(id, row);
-      injectHoverAssign(row, id);
+      // Changed function call to reflect new integration method
+      integrateAssignMenu(row, id);
     });
-  } // ========== FOLDERS ==========
+  }
 
+  // ========== FOLDERS ==========
   function applyFilter() {
     chrome.storage.local.get(["folders", "activeFolder"], (data) => {
       const { folders = {}, activeFolder = "All" } = data || {};
       const allowedIds = new Set(
-        activeFolder === "All" ? [] : folders[activeFolder] || []
+        activeFolder === "All" ? [] : (folders[activeFolder] || [])
       );
       indexSidebar();
       chatIndex.forEach((row, id) => {
@@ -56,10 +57,10 @@
     panel.innerHTML = `
       <div id="cgpf-folder-list"></div>
       <div id="cgpf-add-folder-group">
-          <input id="cgpf-new-folder" placeholder="New folder"/>
-          <button id="cgpf-add-btn">Add</button>
+        <input id="cgpf-new-folder" placeholder="New folder"/>
+        <button id="cgpf-add-btn">Add</button>
       </div>
- `;
+    `;
 
     btn.addEventListener("click", () => {
       panel.style.display = panel.style.display === "none" ? "block" : "none";
@@ -87,61 +88,103 @@
   }
 
   function renderFolders() {
-    chrome.storage.local.get(
-      ["folders", "activeFolder"],
-      ({ folders = {}, activeFolder = "All" }) => {
-        const list = document.querySelector("#cgpf-folder-list");
-        if (!list) return;
-        list.innerHTML = "";
+    chrome.storage.local.get(["folders", "activeFolder"], ({ folders = {}, activeFolder = "All" }) => {
+      const list = document.querySelector("#cgpf-folder-list");
+      if (!list) return;
+      list.innerHTML = "";
 
-        const makeBtn = (name) => {
-          const b = document.createElement("button");
-          b.textContent = name;
-          if (activeFolder === name) b.classList.add(ACTIVE_FOLDER_CLASS);
-          b.onclick = () => chrome.storage.local.set({ activeFolder: name });
-          return b;
-        };
+      const makeBtn = (name) => {
+        const b = document.createElement("button");
+        b.textContent = name;
+        if (activeFolder === name) b.classList.add(ACTIVE_FOLDER_CLASS);
+        b.onclick = () => chrome.storage.local.set({ activeFolder: name });
+        return b;
+      };
 
-        list.appendChild(makeBtn("All"));
-        Object.keys(folders)
-          .sort()
-          .forEach((f) => list.appendChild(makeBtn(f)));
-      }
-    );
-  } // ========== Hover Assign ==========
-
-  function injectHoverAssign(row, chatId) {
-    if (row.querySelector(".cgpf-hover-assign")) return;
-    const assignBtn = document.createElement("span");
-    assignBtn.textContent = "＋";
-    assignBtn.className = "cgpf-hover-assign";
-    assignBtn.title = "Assign to folder";
-
-    assignBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      chrome.storage.local.get(["folders"], ({ folders = {} }) => {
-        const names = Object.keys(folders);
-        if (!names.length) {
-          alert("No folders yet. Add one via the 📁 panel.");
-          return;
-        }
-        const choice = prompt("Assign to which folder?\n\n" + names.join("\n"));
-        if (!choice || !folders[choice]) return;
-        folders[choice] = Array.from(
-          new Set([...(folders[choice] || []), chatId])
-        );
-        chrome.storage.local.set({ folders }, applyFilter);
-      });
+      list.appendChild(makeBtn("All"));
+      Object.keys(folders).sort().forEach((f) => list.appendChild(makeBtn(f)));
     });
+  }
 
-    row.appendChild(assignBtn);
-  } // ========== OBSERVERS ==========
+  // ========== NEW: Dropdown Folder Assignment ==========
 
+  // This function creates the dropdown of folders to choose from
+  function showFolderDropdown(targetElement, chatId) {
+    // Remove any existing dropdown first
+    document.querySelector("#cgpf-folder-dropdown")?.remove();
+
+    chrome.storage.local.get(["folders"], ({ folders = {} }) => {
+      const folderNames = Object.keys(folders);
+      if (folderNames.length === 0) {
+        alert("No folders yet. Add one via the 📁 panel.");
+        return;
+      }
+
+      const dropdown = document.createElement("div");
+      dropdown.id = "cgpf-folder-dropdown";
+
+      folderNames.sort().forEach(name => {
+        const option = document.createElement("div");
+        option.className = "cgpf-folder-option";
+        option.textContent = name;
+        option.addEventListener("click", () => {
+          folders[name] = Array.from(new Set([...(folders[name] || []), chatId]));
+          chrome.storage.local.set({ folders }, applyFilter);
+          dropdown.remove();
+        });
+        dropdown.appendChild(option);
+      });
+
+      const rect = targetElement.getBoundingClientRect();
+      dropdown.style.top = `${rect.bottom}px`;
+      dropdown.style.left = `${rect.left}px`;
+      document.body.appendChild(dropdown);
+
+      // Add a listener to close the dropdown if clicking elsewhere
+      setTimeout(() => {
+        window.addEventListener('click', function closeDropdown(e) {
+          if (!dropdown.contains(e.target)) {
+            dropdown.remove();
+            window.removeEventListener('click', closeDropdown);
+          }
+        });
+      }, 0);
+    });
+  }
+
+  // This function finds the 3-dot menu and adds our new option to it
+  function integrateAssignMenu(row, chatId) {
+    // Find the button that opens the menu (usually the three dots)
+    const menuButton = row.querySelector("button[id^='radix-']");
+    if (!menuButton || menuButton.dataset.cgpfBound) {
+      return; // Already processed this button
+    }
+
+    menuButton.dataset.cgpfBound = "true"; // Mark as processed
+    menuButton.addEventListener("click", () => {
+      // The menu is created dynamically, so we wait a moment for it to appear
+      setTimeout(() => {
+        const menu = document.querySelector('div[role="menu"]');
+        if (menu && !menu.querySelector(".cgpf-assign-menu-item")) {
+          const assignMenuItem = document.createElement("div");
+          assignMenuItem.className = "cgpf-assign-menu-item";
+          assignMenuItem.textContent = "Assign to Folder";
+          assignMenuItem.addEventListener("click", (e) => {
+            e.stopPropagation();
+            showFolderDropdown(assignMenuItem, chatId);
+          });
+          menu.appendChild(assignMenuItem);
+        }
+      }, 50); // 50ms is usually enough time for the menu to render
+    });
+  }
+
+
+  // ========== OBSERVERS & INIT ==========
   function startObserving() {
     const container = getSidebarContainer();
     if (!container) {
-      setTimeout(startObserving, 500); // Retry if not found yet
+      setTimeout(startObserving, 500);
       return;
     }
     const observer = new MutationObserver(() => applyFilter());
@@ -153,7 +196,7 @@
       renderFolders();
       applyFilter();
     }
-  }); // ========== INIT ==========
+  });
 
   function init() {
     injectFoldersUI();
