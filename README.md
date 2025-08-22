@@ -1,13 +1,11 @@
-## for firefox:
+## For Firefox
 
-zip the folder
+- Zip the folder
+- Rename `.zip` to `.xpi`
+- Go to `about:config` in Firefox and set `xpinstall.signatures.required → false`  
+  *(be careful with downloaded add-ons after this)* OR just sign using your dev acc. 
+- Go to **Add-ons > Install Add-on from File…** and select the `.xpi` file.
 
-rename .zip to .xpi
+## For Chrome
 
-go to about:config in firefox and set xpinstall.signatures.required → false (will have to be careful with downloaded add ons forward)
-
-go to add ons > install from add ons > give the xpi file.
-
-## for chrome
-
-idk
+- idk
